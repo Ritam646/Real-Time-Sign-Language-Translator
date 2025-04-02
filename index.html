@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SignSpeaker</title>
+    <style>
+        body {
+            font-family: 'Orbitron', sans-serif;
+            margin: 0;
+            padding: 20px;
+            text-align: center;
+            overflow: hidden;
+            position: relative;
+            background: #000;
+            color: #fff;
+        }
+        canvas#particles { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: -1; }
+        h1 {
+            font-size: 3.5em;
+            text-shadow: 0 0 20px #00d4ff, 0 0 40px #00d4ff;
+            margin-bottom: 30px;
+            animation: glow 1.5s infinite alternate;
+        }
+        @keyframes glow { 0% { text-shadow: 0 0 10px #00d4ff; } 100% { text-shadow: 0 0 30px #00d4ff, 0 0 60px #00d4ff; } }
+        #container {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        #video-container {
+            position: relative;
+            width: 100%;
+            max-width: 640px;
+            height: 480px;
+            border-radius: 20px;
+            overflow: hidden;
+            background: rgba(255, 255, 255, 0.05);
+            box-shadow: 0 0 50px rgba(0, 212, 255, 0.5);
+            transition: transform 0.3s ease;
+        }
+        #video-container:hover { transform: scale(1.05); }
+        #video { width: 100%; height: 100%; object-fit: cover; }
+        #overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.3);
+            border: 4px solid #00d4ff;
+            border-radius: 20px;
+            pointer-events: none;
+        }
+        #output {
+            font-size: 2.5em;
+            padding: 20px;
+            background: rgba(0, 212, 255, 0.3);
+            border-radius: 15px;
+            margin: 20px 0;
+            text-shadow: 0 0 10px #fff;
+            transition: all 0.5s ease;
+        }
+        #output.active { background: rgba(0, 212, 255, 0.7); transform: scale(1.1); }
+        #history, #settings {
+            width: 100%;
+            max-width: 300px;
+            background: rgba(255, 255, 255, 0.1);
+            -webkit-backdrop-filter: blur(15px);
+            backdrop-filter: blur(15px);
+            border-radius: 20px;
+            padding: 20px;
+            box-shadow: 0 0 40px rgba(0, 212, 255, 0.4);
+            transition: transform 0.3s ease;
+        }
+        #history:hover, #settings:hover { transform: translateY(-5px); }
+        #history { max-height: 400px; overflow-y: auto; }
+        .history-item { padding: 10px; border-bottom: 1px solid rgba(255, 255, 255, 0.4); animation: fadeIn 0.5s ease; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        .toggle-container { margin: 20px 0; display: flex; justify-content: center; gap: 20px; }
+        .switch { position: relative; display: inline-block; width: 60px; height: 34px; }
+        .switch input { display: none; }
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: #666;
+            transition: 0.4s;
+            border-radius: 34px;
+        }
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 26px;
+            width: 26px;
+            left: 4px;
+            bottom: 4px;
+            background: #fff;
+            transition: 0.4s;
+            border-radius: 50%;
+        }
+        input:checked + .slider { background: #00d4ff; }
+        input:checked + .slider:before { transform: translateX(26px); }
+        button, input[type="submit"] {
+            padding: 12px 24px;
+            background: #00d4ff;
+            border: none;
+            border-radius: 10px;
+            color: #fff;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 0 20px rgba(0, 212, 255, 0.5);
+        }
+        button:hover, input[type="submit"]:hover { background: #00b8d4; transform: scale(1.05); }
+        input[type="text"], select {
+            padding: 10px;
+            border-radius: 10px;
+            border: 2px solid #00d4ff;
+            margin: 5px;
+            background: rgba(255, 255, 255, 0.1);
+            color: #fff;
+        }
+        #record-progress {
+            width: 100%;
+            height: 10px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 5px;
+            overflow: hidden;
+            display: none;
+        }
+        #record-progress div {
+            height: 100%;
+            background: #00d4ff;
+            width: 0;
+            transition: width 0.1s linear;
+        }
+        .collapsible { cursor: pointer; padding: 15px; background: rgba(0, 212, 255, 0.5); border-radius: 10px; margin: 10px 0; }
+        .content { display: none; padding: 15px; }
+        @media (max-width: 768px) {
+            #video-container { max-width: 100%; height: 300px; }
+            #history, #settings { max-width: 100%; }
+        }
+        body { cursor: none; }
+        #cursor {
+            position: absolute;
+            width: 20px;
+            height: 20px;
+            background: radial-gradient(circle, #00d4ff 20%, transparent 80%);
+            border-radius: 50%;
+            pointer-events: none;
+            z-index: 1000;
+            transition: transform 0.1s ease;
+        }
+    </style>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron&display=swap" rel="stylesheet">
+</head>
+<body>
+    <canvas id="particles"></canvas>
+    <div id="cursor"></div>
+    <h1>SignSpeak</h1>
+    <div class="toggle-container">
+        <label>Translation: </label>
+        <label class="switch">
+            <input type="checkbox" id="toggle" onchange="toggleTranslation()">
+            <span class="slider"></span>
+        </label>
+        <label> | Dark Mode: </label>
+        <label class="switch">
+            <input type="checkbox" id="mode-toggle" onchange="toggleMode()">
+            <span class="slider"></span>
+        </label>
+    </div>
+    <div id="container">
+        <div id="video-container">
+            <video id="video" autoplay></video>
+            <div id="overlay"></div>
+        </div>
+        <div id="history">
+            <h2>Gesture History</h2>
+            <div id="history-list"></div>
+        </div>
+        <div id="settings">
+            <h2>Settings</h2>
+            <div class="collapsible" onclick="toggleCollapse('user-section')">User Management</div>
+            <div id="user-section" class="content">
+                <select id="user-profile" onchange="loadUserProfile()">
+                    <option value="">Select User</option>
+                </select>
+                <form onsubmit="addUser(event)">
+                    <input type="text" id="new-user" placeholder="New User Name">
+                    <input type="submit" value="Add User">
+                </form>
+                <button onclick="deleteUser()">Delete Selected User</button>
+            </div>
+            <div class="collapsible" onclick="toggleCollapse('gesture-section')">Custom Gestures (EN/HI/BN)</div>
+            <div id="gesture-section" class="content">
+                <select id="language">
+                    <option value="en-US">English</option>
+                    <option value="hi-IN">Hindi</option>
+                    <option value="bn-IN">Bengali</option>
+                </select>
+                <form onsubmit="addCustomGesture(event)">
+                    <input type="text" id="gesture-name" placeholder="Gesture (e.g., Hello/नमस्ते/নমস্কার)" required>
+                    <input type="text" id="gesture-meaning" placeholder="Meaning (e.g., Hi/Namaste/Nomoskar)" required>
+                    <input type="submit" value="Add Gesture">
+                </form>
+                <div id="custom-gestures"></div>
+                <button onclick="deleteGesture()">Delete Last Gesture</button>
+            </div>
+        </div>
+    </div>
+    <div id="output">Gesture: None</div>
+
+    <script>
+        const video = document.getElementById('video');
+        const output = document.getElementById('output');
+        const historyList = document.getElementById('history-list');
+        const customGesturesList = document.getElementById('custom-gestures');
+        const userProfile = document.getElementById('user-profile');
+        const languageSelect = document.getElementById('language');
+        const cursor = document.getElementById('cursor');
+        let isTranslating = false;
+        let intervalId = null;
+        let currentUser = '';
+        let users = JSON.parse(localStorage.getItem('signspeak-users')) || {};
+        const defaultGestures = {
+            'en-US': ['Hello', 'Thank You', 'Yes', 'No', 'Goodbye'],
+            'hi-IN': ['नमस्ते', 'धन्यवाद', 'हाँ', 'नहीं', 'अलविदा'],
+            'bn-IN': ['নমস্কার', 'ধন্যবাদ', 'হ্যাঁ', 'না', 'বিদায়']
+        };
+
+        
+        function initWebcam() {
+            navigator.mediaDevices.getUserMedia({ video: true })
+                .then(stream => {
+                    video.srcObject = stream;
+                    console.log('Webcam initialized');
+                })
+                .catch(err => {
+                    console.error('Webcam error:', err);
+                    alert('Webcam error: ' + err.message);
+                });
+        }
+        initWebcam();
+
+        
+        function loadUsers() {
+            userProfile.innerHTML = '<option value="">Select User</option>';
+            Object.keys(users).forEach(user => {
+                userProfile.innerHTML += `<option value="${user}">${user}</option>`;
+            });
+        }
+        loadUsers();
+
+        
+        const canvas = document.getElementById('particles');
+        const ctx = canvas.getContext('2d');
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+        const particles = [];
+        for (let i = 0; i < 100; i++) {
+            particles.push({
+                x: Math.random() * canvas.width,
+                y: Math.random() * canvas.height,
+                radius: Math.random() * 2 + 1,
+                speedX: Math.random() * 0.5 - 0.25,
+                speedY: Math.random() * 0.5 - 0.25
+            });
+        }
+        function animateParticles() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            particles.forEach(p => {
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(0, 212, 255, 0.5)';
+                ctx.fill();
+                p.x += p.speedX;
+                p.y += p.speedY;
+                if (p.x < 0 || p.x > canvas.width) p.speedX *= -1;
+                if (p.y < 0 || p.y > canvas.height) p.speedY *= -1;
+            });
+            requestAnimationFrame(animateParticles);
+        }
+        animateParticles();
+        document.addEventListener('mousemove', (e) => {
+            cursor.style.left = `${e.clientX - 10}px`;
+            cursor.style.top = `${e.clientY - 10}px`;
+        });
+
+        
+        let lastX = 0, lastY = 0;
+        document.addEventListener('mousemove', (e) => {
+            if (!isTranslating || !currentUser) return;
+            const dx = e.clientX - lastX;
+            const dy = e.clientY - lastY;
+            if (Math.abs(dx) > 50 || Math.abs(dy) > 50) {
+                translateGesture();
+                lastX = e.clientX;
+                lastY = e.clientY;
+            }
+        });
+
+        function translateGesture() {
+            const userGestures = users[currentUser]?.gestures || {};
+            const lang = languageSelect.value;
+            const allGestures = [...defaultGestures[lang], ...Object.keys(userGestures)];
+            if (allGestures.length === 0) {
+                output.textContent = 'Gesture: No gestures defined';
+                return;
+            }
+            const randomGesture = allGestures[Math.floor(Math.random() * allGestures.length)];
+            const meaning = userGestures[randomGesture] || randomGesture;
+            output.textContent = `Gesture: ${meaning}`;
+            output.classList.add('active');
+            setTimeout(() => output.classList.remove('active'), 300);
+
+            const utterance = new SpeechSynthesisUtterance(meaning);
+            utterance.lang = lang;
+            window.speechSynthesis.speak(utterance);
+
+            const time = new Date().toLocaleTimeString();
+            const item = document.createElement('div');
+            item.className = 'history-item';
+            item.textContent = `${time}: ${meaning}`;
+            historyList.insertBefore(item, historyList.firstChild);
+        }
+
+        function toggleTranslation() {
+            isTranslating = document.getElementById('toggle').checked;
+            if (isTranslating && currentUser) {
+                intervalId = setInterval(translateGesture, 3000);
+                console.log('Translation started');
+            } else {
+                clearInterval(intervalId);
+                output.textContent = 'Gesture: None';
+                console.log('Translation stopped');
+            }
+        }
+
+        function toggleMode() {
+            document.body.classList.toggle('light-mode');
+            document.body.classList.toggle('dark-mode');
+            canvas.style.background = document.body.classList.contains('dark-mode') ? '#0d1b2a' : '#000';
+        }
+
+        function addUser(event) {
+            event.preventDefault();
+            const newUser = document.getElementById('new-user').value.trim();
+            if (newUser && !users[newUser]) {
+                users[newUser] = { gestures: {} };
+                localStorage.setItem('signspeak-users', JSON.stringify(users));
+                loadUsers();
+                userProfile.value = newUser;
+                loadUserProfile();
+                console.log('User added:', newUser);
+            } else if (users[newUser]) {
+                alert('User already exists!');
+            }
+            document.getElementById('new-user').value = '';
+        }
+
+        function deleteUser() {
+            if (currentUser && confirm(`Delete user ${currentUser}?`)) {
+                delete users[currentUser];
+                localStorage.setItem('signspeak-users', JSON.stringify(users));
+                currentUser = '';
+                loadUsers();
+                loadUserProfile();
+                console.log('User deleted:', currentUser);
+            }
+        }
+
+        function addCustomGesture(event) {
+            event.preventDefault();
+            if (!currentUser) {
+                alert('Select or create a user first!');
+                return;
+            }
+            const name = document.getElementById('gesture-name').value.trim();
+            const meaning = document.getElementById('gesture-meaning').value.trim();
+            if (name && meaning) {
+                users[currentUser].gestures[name] = meaning;
+                localStorage.setItem('signspeak-users', JSON.stringify(users));
+                customGesturesList.innerHTML += `<p>${name}: ${meaning}</p>`;
+                console.log('Gesture added:', name, meaning);
+            }
+            document.getElementById('gesture-name').value = '';
+            document.getElementById('gesture-meaning').value = '';
+        }
+
+        function deleteGesture() {
+            if (currentUser && users[currentUser].gestures) {
+                const gestures = Object.keys(users[currentUser].gestures);
+                if (gestures.length > 0) {
+                    const lastGesture = gestures[gestures.length - 1];
+                    delete users[currentUser].gestures[lastGesture];
+                    localStorage.setItem('signspeak-users', JSON.stringify(users));
+                    loadUserProfile();
+                    console.log('Gesture deleted:', lastGesture);
+                }
+            }
+        }
+
+        function loadUserProfile() {
+            currentUser = userProfile.value;
+            customGesturesList.innerHTML = '';
+            if (currentUser && users[currentUser]) {
+                Object.keys(users[currentUser].gestures).forEach(g => {
+                    customGesturesList.innerHTML += `<p>${g}: ${users[currentUser].gestures[g]}</p>`;
+                });
+                console.log('Profile loaded:', currentUser);
+            }
+            if (!currentUser && isTranslating) {
+                isTranslating = false;
+                toggleTranslation();
+            }
+        }
+
+        function toggleCollapse(id) {
+            const content = document.getElementById(id);
+            content.style.display = content.style.display === 'block' ? 'none' : 'block';
+        }
+    </script>
+</body>
+</html>
